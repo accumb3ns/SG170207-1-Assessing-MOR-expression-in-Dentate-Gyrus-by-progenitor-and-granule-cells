@@ -1,0 +1,94 @@
+---
+title: SG170207-1 Assessing MOR expression in Dentate Gyrus by progenitor and granule
+  cells - role in neurogenesis
+author: "Steven G Grinnell"
+date: "February 7, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages, message=FALSE, warning=FALSE}
+library(data.table)
+library(dplyr)
+library(dtplyr)
+library(annotate)
+library(mogene10sttranscriptcluster.db)
+```
+
+```{r get GSE file, message = FALSE, warning = FALSE}
+gse50148 <- GEOquery::getGEO("GSE50148")
+```
+
+```{r annotation of probeID to gene symbol}
+mogene_transcripts <- mogene10sttranscriptclusterSYMBOL
+mapped_probes<-mappedkeys(mogene_transcripts)
+gene_symbols<-as.list(mogene_transcripts[mapped_probes])
+
+mogene_transcripts_names <- mogene10sttranscriptclusterGENENAME
+mapped_probes_names<-mappedkeys(mogene_transcripts_names)
+gene_names<-as.list(mogene_transcripts_names[mapped_probes_names])
+
+titles<-gse50148$GSE50148_series_matrix.txt.gz@phenoData@data$title
+```
+
+```{r assign dim names and subset based on gene symbol}
+Nelson_data <- exprs(gse50148$GSE50148_series_matrix.txt.gz)
+
+Nelson_dt<- as.data.table(Nelson_data)
+Nelson_dt <- setnames(Nelson_dt, as.character(titles))
+Nelson_dt$ProbeID = rownames(Nelson_data)
+setkey(Nelson_dt, ProbeID)
+
+Nelson_symbol<-Nelson_dt[mapped_probes,]
+Nelson_symbol$GeneSymbol = as.character(gene_symbols)
+Nelson_symbol$GeneName = as.character(gene_names)
+setkey(Nelson_symbol, GeneSymbol)
+```
+
+```{r tidy and get mean and SEM}
+Nelson_tidy <- Nelson_symbol %>% gather(key = Animal, value = Expression_Level, kiTbr2GFP_1:tgTbr2GFP_3) %>% 
+extract(col = Animal, into = c("Group", "Subject"), regex = "([:alnum:]+)_([:digit:])")
+
+Nelson_group_means <- Nelson_tidy %>% group_by(GeneName, GeneSymbol, Group) %>% summarize(n = length(Expression_Level), sem = sd(Expression_Level)/sqrt(n), Expression_Level = mean(Expression_Level))
+
+```
+
+```{r plot opioid receptor expression level}
+opioid_receptors <- Nelson_group_means %>% ungroup() %>% filter(grepl("Opr", GeneSymbol))
+
+ggplot(opioid_receptors, mapping = aes(x = Group, y = Expression_Level)) + 
+          geom_pointrange(aes(ymin = Expression_Level - sem, ymax = Expression_Level + sem)) + 
+          facet_grid(.~GeneSymbol) + 
+          theme(text = element_text(size=15), axis.text.x = element_text(angle=45, hjust=1)) +
+          xlab("Cell Type") + 
+          ylab("log2 Expression level") 
+```
+
+```{r plot MOR vs all receptor boxplot}
+all_receptors <- Nelson_group_means %>% ungroup() %>% filter(grepl("receptor", GeneName))
+
+ggplot(opioid_receptors, mapping = aes(x = Group, y = Expression_Level, fill = Group)) + 
+        geom_boxplot() + 
+        coord_cartesian(ylim = c(5,7.75)) + 
+        xlab("Cell Type") + 
+        ylab("log2 Expression level") + 
+        ggtitle("Expression of all genes with name receptor") +
+        theme(plot.title = element_text(hjust = 0.5), text = element_text(size=15), legend.position="none")
+        
+```
+
+```{r expression relative to 5HT1A}
+oprm1_vs_htr1a_vs_cnr1 <- Nelson_group_means %>% ungroup() %>% filter(grepl("Oprm1", GeneSymbol) | grepl("Htr1a", GeneSymbol) | grepl ("Cnr2", GeneSymbol))
+
+ggplot(oprm1_vs_htr1a_vs_cnr1, mapping = aes(x = Group, y = Expression_Level)) + 
+          geom_pointrange(aes(ymin = Expression_Level - sem, ymax = Expression_Level + sem)) + 
+          facet_grid(.~GeneSymbol) + 
+          theme(text = element_text(size=15), axis.text.x = element_text(angle=45, hjust=1)) +
+          xlab("Cell Type") + 
+          ylab("log2 Expression level") +
+          theme(text = element_text(size=15))
+```
+
