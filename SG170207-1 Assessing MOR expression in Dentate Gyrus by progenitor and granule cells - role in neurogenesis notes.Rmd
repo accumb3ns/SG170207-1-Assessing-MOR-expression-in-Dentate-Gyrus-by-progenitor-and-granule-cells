@@ -16,6 +16,8 @@ library(dplyr)
 library(dtplyr)
 library(annotate)
 library(mogene10sttranscriptcluster.db)
+library(ggplot2)
+library(tidyr)
 ```
 
 ```{r get GSE file, message = FALSE, warning = FALSE}
